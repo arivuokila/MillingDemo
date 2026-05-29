@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Manufacturing CNC Milling Simulator</title>
+    <style>
+        :root {
+            --bg-color: #1e1e24;
+            --card-bg: #2a2a35;
+            --text-color: #f0f0f6;
+            --accent-color: #00adb5;
+            --danger-color: #ff2e63;
+            --warning-color: #ff9f43;
+            --success-color: #28c76f;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid var(--card-bg);
+            padding-bottom: 20px;
+        }
+
+        h1 { margin: 0; color: var(--accent-color); }
+        p.subtitle { margin: 5px 0 0 0; color: #a0a0b0; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        h2 { margin-top: 0; border-bottom: 1px solid #444; padding-bottom: 10px; font-size: 1.4rem; }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .unit { font-weight: normal; color: #a0a0b0; }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-color);
+            cursor: pointer;
+        }
+
+        .readout-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .readout-card {
+            background: #15151a;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .readout-card.danger { border-left-color: var(--danger-color); }
+        .readout-card.warning { border-left-color: var(--warning-color); }
+        .readout-card.success { border-left-color: var(--success-color); }
+
+        .readout-label { font-size: 0.85rem; color: #a0a0b0; text-transform: uppercase; }
+        .readout-value { font-size: 1.6rem; font-weight: bold; margin-top: 5px; }
+
+        /* Visualization Area */
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            height: 220px;
+            background: #111;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .status-banner {
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .status-banner.failed {
+            display: block;
+            background-color: rgba(255, 46, 99, 0.2);
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+        }
+
+        .status-banner.optimal {
+            display: block;
+            background-color: rgba(40, 199, 111, 0.2);
+            border: 1px solid var(--success-color);
+            color: var(--success-color);
+        }
+
+        .formula-box {
+            margin-top: 20px;
+            background-color: #15151a;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Advanced CNC Milling Laboratory Simulator</h1>
+        <p class="subtitle">Analyze the physical relationships between Speeds, Feeds, and Tool Mechanics</p>
+    </header>
+
+    <div class="grid">
+        <div class="panel">
+            <h2>Independent Variables (Inputs)</h2>
+            
+            <div class="control-group">
+                <label>Spindle Speed (N) <span class="unit" id="val-spindle">1200 RPM</span></label>
+                <input type="range" id="input-spindle" min="400" max="4000" step="50" value="1200">
+            </div>
+
+            <div class="control-group">
+                <label>Feed Rate (f<sub>r</sub>) <span class="unit" id="val-feed">150 mm/min</span></label>
+                <input type="range" id="input-feed" min="20" max="800" step="10" value="150">
+            </div>
+
+            <div class="control-group">
+                <label>Axial Depth of Cut (a<sub>p</sub>) <span class="unit" id="val-doc">2.0 mm</span></label>
+                <input type="range" id="input-doc" min="0.5" max="5.0" step="0.1" value="2.0">
+            </div>
+
+            <h2>Fixed Setup Parameters</h2>
+            <table style="width:100%; font-size:0.9rem; color:#a0a0b0; border-spacing: 0 8px;">
+                <tr><td>Tool Diameter ($D_c$):</td><td style="text-align:right; color:#fff;">10.0 mm</td></tr>
+                <tr><td>Number of Flutes ($z$):</td><td style="text-align:right; color:#fff;">4</td></tr>
+                <tr><td>Radial Depth ($ae$):</td><td style="text-align:right; color:#fff;">5.0 mm (Slotting)</td></tr>
+                <tr><td>Workpiece Material:</td><td style="text-align:right; color:#fff;">AISI 1045 Medium Carbon Steel</td></tr>
+            </table>
+
+            <div class="formula-box">
+                <strong>Key Engineering Formulas Applied:</strong><br>
+                • Cutting Speed: $V_c = \frac{\pi \cdot D_c \cdot N}{1000}$ [m/min]<br>
+                • Feed per Tooth: $f_z = \frac{f_r}{N \cdot z}$ [mm/tooth]<br>
+                • MRR: $Q = \frac{a_p \cdot a_e \cdot f_r}{1000}$ [cm³/min]
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Live Machining Telemetry</h2>
+            
+            <div id="canvas-container">
+                <canvas id="millCanvas"></canvas>
+            </div>
+
+            <div id="status-msg" class="status-banner"></div>
+
+            <div class="readout-grid" style="margin-top: 15px;">
+                <div class="readout-card" id="card-vc">
+                    <div class="readout-label">Cutting Speed ($V_c$)</div>
+                    <div class="readout-value" id="out-vc">0.0 <span style="font-size:1rem">m/min</span></div>
+                </div>
+                <div class="readout-card" id="card-fz">
+                    <div class="readout-label">Feed per Tooth ($f_z$)</div>
+                    <div class="readout-value" id="out-fz">0.000 <span style="font-size:1rem">mm</span></div>
+                </div>
+                <div class="readout-card" id="card-mrr">
+                    <div class="readout-label">MRR (Throughput)</div>
+                    <div class="readout-value" id="out-mrr">0.0 <span style="font-size:1rem">cm³/min</span></div>
+                </div>
+                <div class="readout-card" id="card-ra">
+                    <div class="readout-label">Est. Roughness ($R_a$)</div>
+                    <div class="readout-value" id="out-ra">0.00 <span style="font-size:1rem">µm</span></div>
+                </div>
+                <div class="readout-card" id="card-temp">
+                    <div class="readout-label">Tool Temperature</div>
+                    <div class="readout-value" id="out-temp">0 <span style="font-size:1rem">°C</span></div>
+                </div>
+                <div class="readout-card" id="card-deflect">
+                    <div class="readout-label">Tool Stress Index</div>
+                    <div class="readout-value" id="out-stress">0 <span style="font-size:1rem">%</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Constants for configuration
+    const D_c = 10.0; // Tool diameter mm
+    const z = 4;      // Number of teeth
+    const a_e = 5.0;  // Radial depth of cut mm
+
+    // Thresholds for AISI 1045 with Carbide Tooling
+    const VC_RECOMMENDED_MIN = 80;
+    const VC_RECOMMENDED_MAX = 150;
+    const FZ_MAX_LIMIT = 0.12; // Maximum chip load before fracture risk
+    const TEMP_CRITICAL = 850; // Celsius where tool coating breaks down
+
+    // DOM Elements
+    const inputSpindle = document.getElementById('input-spindle');
+    const inputFeed = document.getElementById('input-feed');
+    const inputDoc = document.getElementById('input-doc');
+
+    const valSpindle = document.getElementById('val-spindle');
+    const valFeed = document.getElementById('val-feed');
+    const valDoc = document.getElementById('val-doc');
+
+    const outVc = document.getElementById('out-vc');
+    const outFz = document.getElementById('out-fz');
+    const outMrr = document.getElementById('out-mrr');
+    const outRa = document.getElementById('out-ra');
+    const outTemp = document.getElementById('out-temp');
+    const outStress = document.getElementById('out-stress');
+    const statusMsg = document.getElementById('status-msg');
+
+    const canvas = document.getElementById('millCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Animation variables
+    let animationFrameId;
+    let toolAngle = 0;
+
+    function resizeCanvas() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function updateSimulation() {
+        // 1. Get current input data
+        const N = parseFloat(inputSpindle.value);
+        const f_r = parseFloat(inputFeed.value);
+        const a_p = parseFloat(inputDoc.value);
+
+        // Update control labels
+        valSpindle.innerText = `${N} RPM`;
+        valFeed.innerText = `${f_r} mm/min`;
+        valDoc.innerText = `${a_p.toFixed(1)} mm`;
+
+        // 2. Perform Physical and Engineering Calculations
+        // Cutting speed Vc = (pi * D * N) / 1000
+        const Vc = (Math.PI * D_c * N) / 1000;
+        
+        // Feed per tooth fz = fr / (N * z)
+        const fz = f_r / (N * z);
+        
+        // Material Removal Rate MRR = (ap * ae * fr) / 1000
+        const mrr = (a_p * a_e * f_r) / 1000;
+
+        // Theoretical Ideal Surface Roughness estimation Ra 
+        // Real Ra is strongly dependent on tool nose radius and fz. 
+        // Modeled here using an engineering empirical proxy mapping chip load vs speed stabilization
+        let Ra = ( (fz * fz) / (8 * 1.5) ) * 1000 + (3.2 / (Vc / 50)); 
+        if (Ra < 0.2) Ra = 0.2; 
+
+        // Empirical thermal estimation model based on mechanical cutting power proxy
+        const toolTemp = 20 + (Vc * 3.5) + (fz * 1200) * (a_p / 2);
+
+        // Stress Index calculation (Deflection risk proportional to feed force / chip volume per unit time)
+        const mechanicalForceFactor = (fz * a_p * a_e) * 1800; // Force proxy
+        const stressIndex = Math.min(100, (mechanicalForceFactor / 4.5) * 100);
+
+        // 3. Display Numerical Telemetry Data
+        outVc.innerHTML = `${Vc.toFixed(1)} <span style="font-size:1rem">m/min</span>`;
+        outFz.innerHTML = `${fz.toFixed(4)} <span style="font-size:1rem">mm/t</span>`;
+        outMrr.innerHTML = `${mrr.toFixed(2)} <span style="font-size:1rem">cm³/min</span>`;
+        outRa.innerHTML = `${Ra.toFixed(2)} <span style="font-size:1rem">µm</span>`;
+        outTemp.innerHTML = `${Math.round(toolTemp)} <span style="font-size:1rem">°C</span>`;
+        outStress.innerHTML = `${Math.round(stressIndex)} <span style="font-size:1rem">%</span>`;
+
+        // 4. Engineering Edge Case Evaluation & Error Logging
+        let dynamicState = "normal";
+        statusMsg.className = "status-banner";
+        statusMsg.style.display = "none";
+
+        // Card styling adjustments based on safety boundaries
+        styleReadoutCard('card-vc', Vc >= VC_RECOMMENDED_MIN && Vc <= VC_RECOMMENDED_MAX);
+        styleReadoutCard('card-fz', fz <= FZ_MAX_LIMIT);
+        styleReadoutCard('card-temp', toolTemp < TEMP_CRITICAL);
+        styleReadoutCard('card-deflect', stressIndex < 85);
+
+        if (fz > FZ_MAX_LIMIT || stressIndex > 90) {
+            dynamicState = "broken";
+            statusMsg.innerText = "❌ CRITICAL FAILURE: Excessive Feed per Tooth caused Tool Fracture!";
+            statusMsg.className = "status-banner failed";
+        } else if (toolTemp >= TEMP_CRITICAL) {
+            dynamicState = "burned";
+            statusMsg.innerText = "❌ CRITICAL FAILURE: Excessive Cutting Speed caused Tool Thermal Softening!";
+            statusMsg.className = "status-banner failed";
+        } else if (Vc >= VC_RECOMMENDED_MIN && Vc <= VC_RECOMMENDED_MAX && fz >= 0.03 && fz <= 0.09) {
+            statusMsg.innerText = "✅ OPTIMAL CONDITIONS: Stable tool life and high processing quality achieved.";
+            statusMsg.className = "status-banner optimal";
+        }
+
+        // 5. Trigger Visual Canvas Animation Canvas Context
+        renderCanvas(N, f_r, dynamicState, toolTemp);
+    }
+
+    function styleReadoutCard(id, isValid) {
+        const card = document.getElementById(id);
+        if(isValid) {
+            card.className = "readout-card success";
+        } else {
+            card.className = "readout-card danger";
+        }
+    }
+
+    function renderCanvas(N, f_r, state, temp) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        
+        // Base coordinate drawing variables
+        const workpieceHeight = 80;
+        const toolRadius = 45;
+
+        // Draw Workpiece
+        ctx.fillStyle = "#555564";
+        ctx.fillRect(0, centerY, canvas.width, workpieceHeight);
+        
+        // Draw Cut slot area
+        ctx.fillStyle = "#111";
+        ctx.fillRect(centerX, centerY, canvas.width / 2, workpieceHeight);
+
+        // Animate Spindle Rotation delta velocity
+        if (state !== "broken") {
+            toolAngle += (N / 60) * 0.05; 
+        }
+
+        // Compute tool color gradient based on thermal response
+        let heatRatio = Math.min(1, Math.max(0, (temp - 20) / (TEMP_CRITICAL)));
+        let toolColor = getThermalColor(heatRatio);
+
+        if (state === "broken") {
+            // Render Fractured Endmill
+            ctx.save();
+            ctx.translate(centerX, centerY - 10);
+            ctx.fillStyle = "#333";
+            ctx.fillRect(-toolRadius, -100, toolRadius * 2, 80);
+            
+            // Jagged fracture break representation
+            ctx.fillStyle = "#444";
+            ctx.beginPath();
+            ctx.moveTo(-toolRadius, -20);
+            ctx.lineTo(-10, -35);
+            ctx.lineTo(15, -15);
+            ctx.lineTo(toolRadius, -30);
+            ctx.lineTo(toolRadius, -100);
+            ctx.lineTo(-toolRadius, -100);
+            ctx.fill();
+            ctx.restore();
+        } else {
+            // Draw Regular Working Endmill
+            ctx.save();
+            ctx.translate(centerX, centerY - 10);
+            ctx.rotate(toolAngle);
+
+            // Shaft Core
+            ctx.fillStyle = toolColor;
+            ctx.beginPath();
+            ctx.arc(0, 0, toolRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw flutes/teeth lines 
+            ctx.strokeStyle = "#111";
+            ctx.lineWidth = 4;
+            for (let i = 0; i < z; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                let angle = (i * Math.PI / 2);
+                ctx.lineTo(Math.cos(angle) * toolRadius, Math.sin(angle) * toolRadius);
+                ctx.stroke();
+            }
+            ctx.restore();
+            
+            // Draw Sparks representation if hot/moving fast
+            if (f_r > 300 || temp > 400) {
+                drawSparks(centerX + toolRadius - 10, centerY);
+            }
+        }
+    }
+
+    function getThermalColor(ratio) {
+        // Interpolate between steel grey (#7f8c8d) and hot glowing orange (#ff4500)
+        let r = Math.round(127 + (255 - 127) * ratio);
+        let g = Math.round(140 + (69 - 140) * ratio);
+        let b = Math.round(141 + (0 - 141) * ratio);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function drawSparks(x, y) {
+        ctx.fillStyle = "#ffcc00";
+        for (let i = 0; i < 5; i++) {
+            let sparkSize = Math.random() * 3 + 1;
+            let dx = Math.random() * 40 + 10;
+            let dy = (Math.random() - 0.5) * 30;
+            ctx.fillRect(x + dx, y + dy, sparkSize, sparkSize);
+        }
+    }
+
+    // Event listeners bound to real-time telemetry changes
+    inputSpindle.addEventListener('input', updateSimulation);
+    inputFeed.addEventListener('input', updateSimulation);
+    inputDoc.addEventListener('input', updateSimulation);
+
+    // Initial Trigger Run
+    updateSimulation();
+</script>
+
+</body>
+</html>
